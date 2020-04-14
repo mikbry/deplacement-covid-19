@@ -1,13 +1,20 @@
 import 'bootstrap/dist/css/bootstrap.min.css'
 
-import { PDFDocument, StandardFonts } from 'pdf-lib'
-import QRCode from 'qrcode'
-
-import pdfBase from './certificate.pdf'
 import './main.css'
 
-const $ = (...args) => document.querySelector(...args)
-const $$ = (...args) => [...document.querySelectorAll(...args)]
+import { PDFDocument, StandardFonts } from 'pdf-lib'
+import QRCode from 'qrcode'
+import { library, dom } from '@fortawesome/fontawesome-svg-core'
+import { faEye, faFilePdf } from '@fortawesome/free-solid-svg-icons'
+
+import './check-updates'
+import { $, $$ } from './dom-utils'
+import pdfBase from './certificate.pdf'
+
+library.add(faEye, faFilePdf)
+
+dom.watch()
+
 var year, month, day
 
 const generateQR = async text => {
@@ -81,13 +88,8 @@ function idealFontSize (font, text, maxWidth, minSize, defaultSize) {
 }
 
 async function generatePdf (profile, reasons) {
-  const generatedDate = new Date()
-  setDateNow(generatedDate)
-  const creationDate = `${day}/${month}/${year}`
-
-  const hour = pad(generatedDate.getHours())
-  const minute = pad(generatedDate.getMinutes())
-  const creationHour = `${hour}h${minute}`
+  const creationDate = new Date().toLocaleDateString('fr-FR')
+  const creationHour = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')
 
   const { lastname, firstname, birthday, lieunaissance, address, zipcode, town, datesortie, heuresortie } = profile
   const releaseHours = String(heuresortie).substring(0, 2)
@@ -209,25 +211,38 @@ function isFacebookBrowser () {
 }
 
 if (isFacebookBrowser()) {
+  $('#alert-facebook').value = 'ATTENTION !! Vous utilisez actuellement le navigateur Facebook, ce générateur ne fonctionne pas correctement au sein de ce navigateur ! Merci d\'ouvrir Chrome sur Android ou bien Safari sur iOS.'
   $('#alert-facebook').classList.remove('d-none')
 }
 
 function addSlash () {
-  this.value = this.value.replace(/^(\d{2})$/g, '$1/')
-  this.value = this.value.replace(/^(\d{2})\/(\d{2})$/g, '$1/$2/')
+  $('#field-birthday').value = $('#field-birthday').value.replace(/^(\d{2})$/g, '$1/')
+  $('#field-birthday').value = $('#field-birthday').value.replace(/^(\d{2})\/(\d{2})$/g, '$1/$2/')
+  $('#field-birthday').value = $('#field-birthday').value.replace(/\/\//g, '/')
 }
 
-$('#field-birthday').addEventListener('keyup', addSlash)
+$('#field-birthday').onkeyup = function () {
+  const key = event.keyCode || event.charCode
+  if (key === 8 || key === 46) {
+    return false
+  } else {
+    addSlash()
+    return false
+  }
+}
 
 const snackbar = $('#snackbar')
 
-$('#form-profile').addEventListener('submit', async event => {
+$('#generate-btn').addEventListener('click', async event => {
   event.preventDefault()
 
   saveProfile()
   const reasons = getAndSaveReasons()
   const pdfBlob = await generatePdf(getProfile(), reasons)
-  downloadBlob(pdfBlob, 'attestation.pdf')
+  localStorage.clear()
+  const creationDate = new Date().toLocaleDateString('fr-CA')
+  const creationHour = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', '-')
+  downloadBlob(pdfBlob, `attestation-${creationDate}_${creationHour}.pdf`) 
 
   snackbar.classList.remove('d-none')
   setTimeout(() => snackbar.classList.add('show'), 100)
@@ -249,6 +264,60 @@ $$('input').forEach(input => {
       }
     })
   }
+})
+
+const conditions = {
+  '#field-firstname': {
+    condition: 'length',
+  },
+  '#field-lastname': {
+    condition: 'length',
+  },
+  '#field-birthday': {
+    condition: 'pattern',
+    pattern: /^([0][1-9]|[1-2][0-9]|30|31)\/([0][1-9]|10|11|12)\/(19[0-9][0-9]|20[0-1][0-9]|2020)/g
+  },
+  '#field-lieunaissance': {
+    condition: 'length',
+  },
+  '#field-address': {
+    condition: 'length',
+  },
+  '#field-town': {
+    condition: 'length',
+  },
+  '#field-zipcode': {
+    condition: 'pattern',
+    pattern: /\d{5}/g
+  },
+  '#field-datesortie': {
+    condition: 'pattern',
+    pattern: /\d{4}-\d{2}-\d{2}/g
+  },
+  '#field-heuresortie': {
+    condition: 'pattern',
+    pattern: /\d{2}:\d{2}/g
+  }
+}
+
+Object.keys(conditions).forEach(field => {
+  $(field).addEventListener('input', () => {
+    if (conditions[field].condition == 'pattern') {
+      const pattern = conditions[field].pattern;
+      if ($(field).value.match(pattern)) {
+        $(field).setAttribute('aria-invalid', "false");
+      } else {
+        $(field).setAttribute('aria-invalid', "true");
+      }
+    }
+    if (conditions[field].condition == 'length') {
+      if ($(field).value.length > 0) {
+        $(field).setAttribute('aria-invalid', "false");
+      } else {
+        $(field).setAttribute('aria-invalid', "true");
+      }
+    }
+  })
 })
 
 function addVersion () {
